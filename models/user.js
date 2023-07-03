@@ -1,5 +1,5 @@
-const mongoose = require("mongoose");
-const validator = require("validator");
+const mongoose = require('mongoose');
+const validator = require('validator');
 
 const userSchema = new mongoose.Schema(
   {
@@ -30,11 +30,11 @@ const userSchema = new mongoose.Schema(
       validate: {
         validator: (url) => validator.isURL(url),
         message:
-          "Введенный URL адрес некорректный, повторите пожалуйста попытку ввода еще раз",
+          'Введенный URL адрес некорректный, повторите пожалуйста попытку ввода еще раз',
       },
     },
   },
-  { versionKey: false }
+  { versionKey: false },
 );
 
-module.exports = mongoose.model("user", userSchema);
+module.exports = mongoose.model('user', userSchema);
