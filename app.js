@@ -2,10 +2,34 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const helmet = require('helmet');
-const routes = require('./routes/router');
+const bodyParser = require('body-parser');
+const { errors } = require('celebrate');
+const limiter = require('./middlewares/rateLimiter');
+const routeSignup = require('./routes/signup');
+const routeSignin = require('./routes/signin');
+const auth = require('./middlewares/auth');
+const routeUsers = require('./routes/users');
+const routeCards = require('./routes/cards');
+const NotFoundPageError = require('./errors/NotFoundPageError');
+const errorHandler = require('./middlewares/errorHandler');
+
+// Сохранение адреса базы данных в константу, для подключения к монго
+const URL = 'mongodb://127.0.0.1:27017/mestodb';
 
 // Определение порта из переменной окружения или использование значения по умолчанию
 const { PORT = 3000 } = process.env;
+
+mongoose.set('strictQuery', true);
+
+// Подключение к базе данных MongoDB
+mongoose
+  .connect(URL)
+  .then(() => {
+    console.log('БД подключена');
+  })
+  .catch(() => {
+    console.log('Не удается подключиться к БД, проверьте правильность подключения');
+  });
 
 // Создание экземпляра приложения Express
 const app = express();
@@ -13,43 +37,21 @@ const app = express();
 // Применение промежуточного ПО для обеспечения безопасности
 app.use(helmet());
 
-// Отключение заголовка "x-powered-by"
-app.disable('x-powered-by');
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 
-// Парсинг JSON-запросов
-app.use(express.json());
+app.use(limiter);
 
-// Установка значения для свойства "user" в объекте "req"
-app.use((req, res, next) => {
-  req.user = {
-    _id: '64a2d9ae07df4352e5bfc82a' /* {
-     "name": "Karina",
-    "about": "Developer",
-    "avatar": "https://s00.yaplakal.com/pics/pics_original/5/0/6/17827605.jpg",
-    "_id": "64a2d9ae07df4352e5bfc82a"
-  } Данные пользователя созданы через POSTMAN успешно присвоен уникальный id пользователя */,
-  };
-  console.log(req.user);
-  next();
-});
+app.use('/', routeSignup);
+app.use('/', routeSignin);
 
-// Подключение маршрутов
-app.use(routes);
+app.use(auth);
 
-// Подключение к базе данных MongoDB
-mongoose
-  .connect('mongodb://127.0.0.1:27017/mestodb')
-  .then(() => {
-    console.log('БД подключена');
-  })
-  .catch(() => {
-    console.log(
-      'Не удается подключиться к БД, проверьте правильность подключения',
-    );
-  });
-console.log(PORT);
+app.use('/users', routeUsers);
+app.use('/cards', routeCards);
 
-// Запуск сервера на указанном порту
-app.listen(PORT, () => {
-  console.log(`App listening on port ${PORT}`);
-});
+app.use((req, res, next) => next(new NotFoundPageError('Запрашиваемый ресурс не найден.')));
+app.use(errors());
+app.use(errorHandler);
+
+app.listen(PORT);

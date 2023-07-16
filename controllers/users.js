@@ -1,129 +1,196 @@
-const { OK_STATUS_CODE } = require('../utils/errors');
-const { CREATED_STATUS_CODE } = require('../utils/errors');
-const { BAD_REQUEST_STATUS_CODE } = require('../utils/errors');
-const { NOT_FOUND_STATUS_CODE } = require('../utils/errors');
-const { INTERNAL_SERVER_ERROR_STATUS_CODE } = require('../utils/errors');
-
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 const User = require('../models/user');
+const { securityKey } = require('../utils/constants');
+
+const AuthenticationError = require('../errors/AuthenticationError');
+const NotFoundPageError = require('../errors/NotFoundPageError');
+const ConflictError = require('../errors/ConflictError');
+const InvalidDataError = require('../errors/InvalidDataError');
+
+const { CREATED_STATUS_CODE } = require('../utils/constants');
+
+// Регистрация пользователя
+function registrationUser(req, res, next) {
+  const {
+    email, password, name, about, avatar,
+  } = req.body;
+
+  bcrypt
+    .hash(password, 10)
+    .then((hash) => User.create({
+      email,
+      password: hash,
+      name,
+      about,
+      avatar,
+    }))
+    .then((user) => {
+      const { _id } = user;
+
+      return res.status(CREATED_STATUS_CODE).send({
+        email,
+        name,
+        about,
+        avatar,
+        _id,
+      });
+    })
+    .catch((err) => {
+      if (err.code === 11000) {
+        next(
+          new ConflictError(
+            'Пользователь с данным электронным адресом уже зарегистрирован',
+          ),
+        );
+      } else if (err.name === 'ValidationError') {
+        next(
+          new InvalidDataError(
+            'Передача некорректных данные при регистрации пользователя',
+          ),
+        );
+      } else {
+        next(err);
+      }
+    });
+}
+
+// Логин пользователя
+function loginUser(req, res, next) {
+  const { email, password } = req.body;
+
+  User.findUserByCredentials(email, password)
+    .then(({ _id: userId }) => {
+      if (userId) {
+        const token = jwt.sign({ userId }, securityKey, { expiresIn: '7d' });
+
+        return res.send({ _id: token });
+      }
+
+      throw new AuthenticationError('Неправильные почта или пароль');
+    })
+    .catch(next);
+}
 
 // Получение всех пользователей из базы данных
-module.exports.getUsersInfo = (_, res) => {
+function getUsersInfo(_, res, next) {
   User.find({})
-    .then((users) => res.send(users))
-    .catch(() => res.status(INTERNAL_SERVER_ERROR_STATUS_CODE).send({
-      message: 'На сервере произошла ошибка',
-    }));
-};
+    .then((users) => res.send({ users }))
+    .catch(next);
+}
 
 // Пользователь по его уникальному ID
-module.exports.getUserInfoId = (req, res) => {
-  User.findById(req.params.userId)
-    .orFail()
-    .then((user) => res.status(OK_STATUS_CODE).send(user))
+function getUserInfoId(req, res, next) {
+  const { id } = req.params;
+
+  User.findById(id)
+
+    .then((user) => {
+      if (user) return res.send({ user });
+
+      throw new NotFoundPageError('Пользователь c указанным id не найден');
+    })
     .catch((err) => {
       if (err.name === 'CastError') {
-        return res.status(BAD_REQUEST_STATUS_CODE).send({
-          message: 'Передача некорректных данных при поиске пользователя',
-        });
-      }
-
-      if (err.name === 'DocumentNotFoundError') {
-        return res.status(NOT_FOUND_STATUS_CODE).send({
-          message: 'Пользователь c указанным _id не найден',
-        });
-      }
-
-      return res.status(INTERNAL_SERVER_ERROR_STATUS_CODE).send({
-        message: 'На сервере произошла ошибка',
-      });
-    });
-};
-
-// Создание нового пользователя
-module.exports.createUserInfo = (req, res) => {
-  const { name, about, avatar } = req.body;
-  User.create({ name, about, avatar })
-    .then((user) => res.status(CREATED_STATUS_CODE).send(user))
-    .catch((err) => {
-      if (err.name === 'ValidationError') {
-        res.status(BAD_REQUEST_STATUS_CODE).send({
-          message:
-            'Передача некорректных данных при создания нового пользователя.',
-        });
+        next(new InvalidDataError('Передача некорректного id'));
       } else {
-        res.status(INTERNAL_SERVER_ERROR_STATUS_CODE).send({
-          message: 'На сервере произошла ошибка',
-        });
+        next(err);
       }
     });
-};
+}
+
+// Пользователь
+function getUserInfo(req, res, next) {
+  const { userId } = req.user;
+
+  User.findById(userId)
+    .then((user) => {
+      if (user) return res.send({ user });
+
+      throw new NotFoundPageError('Пользователь c указанным id не найден');
+    })
+    .catch((err) => {
+      if (err.name === 'CastError') {
+        next(new InvalidDataError('Передача некорректного id'));
+      } else {
+        next(err);
+      }
+    });
+}
+
+// редактирование данных пользователя
+function editProfileUserInfo(req, res, next) {
+  const { name, about } = req.body;
+  const { userId } = req.user;
+
+  User.findByIdAndUpdate(
+    userId,
+    {
+      name,
+      about,
+    },
+    {
+      new: true,
+      runValidators: true,
+    },
+  )
+    .then((user) => {
+      if (user) return res.send({ user });
+
+      throw new NotFoundPageError('Пользователь c указанным id не найден');
+    })
+    .catch((err) => {
+      if (err.name === 'ValidationError' || err.name === 'CastError') {
+        next(
+          new InvalidDataError(
+            'Передача некорректных данных при попытке обновления профиля',
+          ),
+        );
+      } else {
+        next(err);
+      }
+    });
+}
 
 // Редактирование аватара пользователя
-module.exports.updateProfileUserAvatar = (req, res) => {
+function updateProfileUserAvatar(req, res, next) {
   const { avatar } = req.body;
+  const { userId } = req.user;
 
   User.findByIdAndUpdate(
-    req.user._id,
-    { avatar },
-    { new: true, runValidators: true },
+    userId,
+    {
+      avatar,
+    },
+    {
+      new: true,
+      runValidators: true,
+    },
   )
-    .orFail()
-    .then((user) => res.status(OK_STATUS_CODE).send(user))
-    .catch((err) => {
-      if (err.name === 'DocumentNotFoundError') {
-        return res.status(NOT_FOUND_STATUS_CODE).send({
-          message: 'Данный пользователь не был найден',
-        });
-      }
+    .then((user) => {
+      if (user) return res.send({ user });
 
-      if (err.name === 'ValidationError') {
-        const validationErrors = Object.values(err.errors).map(
-          (error) => error.message,
-        );
-        return res.status(BAD_REQUEST_STATUS_CODE).send({
-          message:
+      throw new NotFoundPageError('Пользователь c указанным id не найден');
+    })
+    .catch((err) => {
+      if (err.name === 'ValidationError' || err.name === 'CastError') {
+        next(
+          new InvalidDataError(
             'Передача некорректных данных при попытке обновления аватара',
-          validationErrors,
-        });
-      }
-
-      return res.status(INTERNAL_SERVER_ERROR_STATUS_CODE).send({
-        message: 'На сервере произошла ошибка',
-      });
-    });
-};
-
-// Редактирование информации профиля пользователя
-module.exports.editProfileUserInfo = (req, res) => {
-  const { name, about } = req.body;
-
-  User.findByIdAndUpdate(
-    req.user._id,
-    { name, about },
-    { new: true, runValidators: true },
-  )
-    .orFail()
-    .then((user) => res.status(OK_STATUS_CODE).send(user))
-    .catch((err) => {
-      if (err.name === 'DocumentNotFoundError') {
-        return res.status(NOT_FOUND_STATUS_CODE).send({
-          message: 'Данный пользователь не был найден',
-        });
-      }
-
-      if (err.name === 'ValidationError') {
-        const validationErrors = Object.values(err.errors).map(
-          (error) => error.message,
+          ),
         );
-        return res.status(BAD_REQUEST_STATUS_CODE).send({
-          message:
-            'Передача некорректных данных при попытке обновления профиля',
-          validationErrors,
-        });
+      } else {
+        next(err);
       }
-
-      return res.status(INTERNAL_SERVER_ERROR_STATUS_CODE).send({
-        message: 'На сервере произошла ошибка',
-      });
     });
+}
+
+module.exports = {
+  registrationUser,
+  loginUser,
+  getUsersInfo,
+  getUserInfoId,
+  getUserInfo,
+  editProfileUserInfo,
+  updateProfileUserAvatar,
 };
