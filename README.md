@@ -55,4 +55,4 @@
 - Удаление карточки
 ## Cсылка на проект
 
-- 
+- https://karinahik.github.io/express-mesto-gha/
