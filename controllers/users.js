@@ -3,7 +3,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/user');
 const { securityKey } = require('../utils/constants');
 
-const AuthenticationError = require('../errors/AuthenticationError');
+// const AuthenticationError = require('../errors/AuthenticationError');
 const NotFoundPageError = require('../errors/NotFoundPageError');
 const ConflictError = require('../errors/ConflictError');
 const InvalidDataError = require('../errors/InvalidDataError');
@@ -61,13 +61,9 @@ function loginUser(req, res, next) {
 
   User.findUserByCredentials(email, password)
     .then(({ _id: userId }) => {
-      if (userId) {
-        const token = jwt.sign({ userId }, securityKey, { expiresIn: '7d' });
+      const token = jwt.sign({ userId }, securityKey, { expiresIn: '7d' });
 
-        return res.send({ _id: token });
-      }
-
-      throw new AuthenticationError('Неправильные почта или пароль');
+      return res.send({ _id: token });
     })
     .catch(next);
 }
@@ -109,12 +105,8 @@ function getUserInfo(req, res, next) {
 
       throw new NotFoundPageError('Пользователь c указанным id не найден');
     })
-    .catch((err) => {
-      if (err.name === 'CastError') {
-        next(new InvalidDataError('Передача некорректного id'));
-      } else {
-        next(err);
-      }
+    .catch(() => {
+      next(new InvalidDataError('Передача некорректного id'));
     });
 }
 
@@ -140,7 +132,7 @@ function editProfileUserInfo(req, res, next) {
       throw new NotFoundPageError('Пользователь c указанным id не найден');
     })
     .catch((err) => {
-      if (err.name === 'ValidationError' || err.name === 'CastError') {
+      if (err.name === 'ValidationError') {
         next(
           new InvalidDataError(
             'Передача некорректных данных при попытке обновления профиля',
@@ -173,7 +165,7 @@ function updateProfileUserAvatar(req, res, next) {
       throw new NotFoundPageError('Пользователь c указанным id не найден');
     })
     .catch((err) => {
-      if (err.name === 'ValidationError' || err.name === 'CastError') {
+      if (err.name === 'ValidationError') {
         next(
           new InvalidDataError(
             'Передача некорректных данных при попытке обновления аватара',

@@ -1,10 +1,9 @@
 const mongoose = require('mongoose');
-// пакет для хеширования паролей в Node.js. Он предоставляет функции для
-// хеширования и проверки паролей с использованием алгоритма bcrypt.
 const bcrypt = require('bcrypt');
 
-const { Schema } = mongoose;
+const AuthenticationError = require('../errors/AuthenticationError');
 
+const { Schema } = mongoose;
 const { urlRegex } = require('../utils/constants');
 
 const userSchema = new Schema(
@@ -23,29 +22,21 @@ const userSchema = new Schema(
       type: String,
       required: true,
       select: false,
-      validate: {
-        validator: ({ length }) => length >= 6,
-        message: 'Пароль должен состоять минимум из 6 символов',
-      },
+      minlength: 6, // Минимальная длина пароля должна быть 6 символов.
     },
 
     name: {
       type: String,
       default: 'Жак-Ив Кусто',
-      validate: {
-        validator: ({ length }) => length >= 2 && length <= 30,
-        message: 'Имя пользователя должно быть длиной от 2 до 30 символов',
-      },
+      minlength: 2, // Минимальная длина имени пользователя должна быть 2 символа.
+      maxlength: 30, // Максимальная длина имени пользователя должна быть 30 символов.
     },
 
     about: {
       type: String,
       default: 'Исследователь',
-      validate: {
-        validator: ({ length }) => length >= 2 && length <= 30,
-        message:
-          'Информация о пользователе должна быть длиной от 2 до 30 символов',
-      },
+      minlength: 2, // Минимальная длина информации о пользователе должна быть 2 символа.
+      maxlength: 30, // Максимальная длина информации о пользователе должна быть 30 символов.
     },
 
     avatar: {
@@ -58,7 +49,6 @@ const userSchema = new Schema(
       },
     },
   },
-
   {
     versionKey: false,
     statics: {
@@ -69,12 +59,10 @@ const userSchema = new Schema(
             if (user) {
               return bcrypt.compare(password, user.password).then((matched) => {
                 if (matched) return user;
-
-                return Promise.reject();
+                throw new AuthenticationError('Неправильные почта или пароль');
               });
             }
-
-            return Promise.reject();
+            throw new AuthenticationError('Неправильные почта или пароль');
           });
       },
     },

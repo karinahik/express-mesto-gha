@@ -78,7 +78,7 @@ function addLike(req, res, next) {
       throw new NotFoundPageError('Карточка с данным ID не найдена');
     })
     .catch((err) => {
-      if (err.name === 'ValidationError' || err.name === 'CastError') {
+      if (err.name === 'CastError') {
         next(
           new InvalidDataError(
             'Передача некорректных данных при попытке поставить лайк.',
@@ -110,7 +110,7 @@ function removeLike(req, res, next) {
       throw new NotFoundPageError('Карточка c передаваемым ID не найдена');
     })
     .catch((err) => {
-      if (err.name === 'ValidationError' || err.name === 'CastError') {
+      if (err.name === 'CastError') {
         next(
           new InvalidDataError(
             'Передача некорректных данных при попытке удаления лайка с карточки.',
